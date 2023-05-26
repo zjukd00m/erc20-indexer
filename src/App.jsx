@@ -1,116 +1,186 @@
 import {
   Box,
   Button,
-  Center,
   Flex,
   Heading,
   Image,
   Input,
+  List,
+  ListItem,
   SimpleGrid,
   Text,
 } from '@chakra-ui/react';
-import { Alchemy, Network, Utils } from 'alchemy-sdk';
+import { Utils } from 'alchemy-sdk';
 import { useState } from 'react';
+import { getERC20Tokens, getERC721Tokens, isValidEthererumAddress } from './utils/crypto';
+import Nft from './Nft';
 
 function App() {
   const [userAddress, setUserAddress] = useState('');
-  const [results, setResults] = useState([]);
-  const [hasQueried, setHasQueried] = useState(false);
-  const [tokenDataObjects, setTokenDataObjects] = useState([]);
+  const [tokensERC20, setTokensERC20] = useState([]);
+  const [tokensERC721, setTokensERC721] = useState([]);
+  const [loadingERC20, setLoadingERC20] = useState(false);
+  const [loadingERC721, setLoadingERC721] = useState(false);
+  const [error, setError] = useState("");
+  const [addressError, setAddressError] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [token, setToken] = useState(null);
 
-  async function getTokenBalance() {
-    const config = {
-      apiKey: '<-- COPY-PASTE YOUR ALCHEMY API KEY HERE -->',
-      network: Network.ETH_MAINNET,
-    };
+  async function getERC20TokenBalance() {
+    if (!userAddress?.length || error?.length) return; 
 
-    const alchemy = new Alchemy(config);
-    const data = await alchemy.core.getTokenBalances(userAddress);
+    setLoadingERC20(false);
 
-    setResults(data);
+    const tokens = await getERC20Tokens(userAddress);
 
-    const tokenDataPromises = [];
+    setLoadingERC20(false);
 
-    for (let i = 0; i < data.tokenBalances.length; i++) {
-      const tokenData = alchemy.core.getTokenMetadata(
-        data.tokenBalances[i].contractAddress
-      );
-      tokenDataPromises.push(tokenData);
-    }
-
-    setTokenDataObjects(await Promise.all(tokenDataPromises));
-    setHasQueried(true);
+    setTokensERC20(tokens);
   }
+
+  async function getERC721TokenBalance() {
+    if (!userAddress?.length || error?.length) return; 
+
+    setLoadingERC721(true);
+
+    const tokens = await getERC721Tokens(userAddress);
+
+    setLoadingERC721(false);
+
+    setTokensERC721(tokens);
+  }
+
+  function handleAddressChange(address) {
+    setUserAddress(address);
+
+    const isValid = isValidEthererumAddress(address);
+
+    if (isValid) {
+      setAddressError("Invalid ethereum address");
+    } else {
+      setAddressError("");
+    }
+  }
+
   return (
-    <Box w="100vw">
-      <Center>
-        <Flex
-          alignItems={'center'}
-          justifyContent="center"
-          flexDirection={'column'}
-        >
-          <Heading mb={0} fontSize={36}>
-            ERC-20 Token Indexer
-          </Heading>
-          <Text>
-            Plug in an address and this website will return all of its ERC-20
-            token balances!
-          </Text>
-        </Flex>
-      </Center>
+    <Box>
       <Flex
+        boxSizing="border-box"
         w="100%"
         flexDirection="column"
-        alignItems="center"
-        justifyContent={'center'}
+        alignItems="flex-start"
       >
-        <Heading mt={42}>
+        <Heading fontSize={33}>
+          Token Indexer
+        </Heading>
+        <Heading mt={20} fontSize={20}>
           Get all the ERC-20 token balances of this address:
         </Heading>
-        <Input
-          onChange={(e) => setUserAddress(e.target.value)}
-          color="black"
-          w="600px"
-          textAlign="center"
-          p={4}
-          bgColor="white"
-          fontSize={24}
-        />
-        <Button fontSize={20} onClick={getTokenBalance} mt={36} bgColor="blue">
-          Check ERC-20 Token Balances
-        </Button>
+        <Flex direction="column" alignItems="flex-start" >
+          <Flex alignItems="center">
+            <Input
+              onChange={(e) => handleAddressChange(e.target.value)}
+              color="black"
+              w="600px"
+              p={4}
+              bgColor="white"
+              fontSize={24}
+            />
+            <Button onClick={() => {
+              getERC20TokenBalance();
+              getERC721TokenBalance();
+            }} fontSize={14} color="black" bgColor={"#f1fa8c"} disabled={addressError?.length ? true : false}>
+              Check ERC-20 Token Balances
+            </Button>
+          </Flex>
+          {
+            addressError?.length ? (
+              <Text fontSize={13} color={"#ff5555"} textAlign={"left"}>
+                { addressError }
+              </Text>
+            ) : null
+          }
+        </Flex>
 
-        <Heading my={36}>ERC-20 token balances:</Heading>
+        {
+          modalOpen && token ? (
+            <Nft token={token} modalOpen={modalOpen} onClose={() => {
+              setModalOpen(false);
+              setToken(null);
+            }} /> 
+          ) : null 
+        }
 
-        {hasQueried ? (
-          <SimpleGrid w={'90vw'} columns={4} spacing={24}>
-            {results.tokenBalances.map((e, i) => {
-              return (
-                <Flex
-                  flexDir={'column'}
-                  color="white"
-                  bg="blue"
-                  w={'20vw'}
-                  key={e.id}
-                >
-                  <Box>
-                    <b>Symbol:</b> ${tokenDataObjects[i].symbol}&nbsp;
-                  </Box>
-                  <Box>
-                    <b>Balance:</b>&nbsp;
-                    {Utils.formatUnits(
-                      e.tokenBalance,
-                      tokenDataObjects[i].decimals
-                    )}
-                  </Box>
-                  <Image src={tokenDataObjects[i].logo} />
-                </Flex>
-              );
-            })}
-          </SimpleGrid>
-        ) : (
-          'Please make a query! This may take a few seconds...'
-        )}
+        <SimpleGrid columns={2} spacing="2em">
+          <Flex direction="column">
+            <Heading my={36}>ERC-20 token balances:</Heading>
+            {
+              !loadingERC20 && tokensERC20?.length ? (
+                <List width="100%" p={0}>
+                  {
+                    tokensERC20.map((token) => {
+                      return (
+                        <ListItem bgColor={"gray"} marginY="0.1em" key={token.contractAddress}>
+                          <Flex alignItems="center" justifyContent="space-between" gap="3em" marginX="1em">
+                            <Image src={token.metadata.logo} height={35} width={35} />
+                            <Text fontSize={13}> {token.metadata.symbol}&nbsp; </Text>
+                            <Text fontSize={13}> Balance: <span>
+                            {Utils.formatUnits(
+                              token.tokenBalance,
+                              token.metadata.decimals
+                            )}&nbsp;
+                            </span>
+                            </Text>
+                          </Flex>
+                        </ListItem>
+                      )
+                    })
+                  }
+                </List>
+              ) : !loadingERC20 && !tokensERC20?.length ? (
+                  <Text> Search some tokens </Text>
+              ) : loadingERC20 ? (
+                <Text> Loading... </Text>
+              ) : null
+            }
+          </Flex>
+          <Flex direction="column">
+            <Heading my={36}>ERC-721 token balances:</Heading>
+            {
+              !loadingERC721 && tokensERC721?.length ? (
+                <List width="100%" p={0}>
+                  {
+                    tokensERC721.map((token) => {
+                      return (
+                        <ListItem bgColor={"gray"} marginY="0.1em" key={token.metadata.tokenId} onClick={() => {
+                          setToken(token);
+                          setModalOpen(true);
+                        }}>
+                          <Flex alignItems="center" justifyContent="space-between" gap="3em" marginX="1em">
+                            <Image src={token.metadata.rawMetadata.image} height={35} width={35} />
+                            <Text fontSize={13}> {token.metadata.title}&nbsp; </Text>
+                            <Text fontSize={13}> Balance: <span>
+                            {Utils.formatUnits(
+                              token.balance,
+                              token.metadata.decimals
+                            )}&nbsp;
+                            </span>
+                            </Text>
+                          </Flex>
+                        </ListItem>
+                      )
+                    })
+                  }
+                </List>
+              ) : !loadingERC721 && !tokensERC721?.length ? (
+                  <Text> Search some tokens </Text>
+              ) : loadingERC721 ? (
+                <Text> Loading... </Text>
+              ) : null
+            }
+          </Flex>
+        </SimpleGrid>
+
       </Flex>
     </Box>
   );
